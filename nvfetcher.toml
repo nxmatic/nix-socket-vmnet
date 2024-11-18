@@ -1,0 +1,3 @@
+[socket-vmnet-sources]
+fetch.github = "lima-vm/socket_vmnet"
+src.manual = "v1.1.7"
