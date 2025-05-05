@@ -3,13 +3,13 @@
 {
   socket-vmnet-sources = {
     pname = "socket-vmnet-sources";
-    version = "v1.1.7";
+    version = "v1.2.1";
     src = fetchFromGitHub {
       owner = "lima-vm";
       repo = "socket_vmnet";
-      rev = "v1.1.7";
+      rev = "v1.2.1";
       fetchSubmodules = false;
-      sha256 = "sha256-SABFfeMhabz1MIBCyzV6kErR0xdtP4fX1zQOagO7lVA=";
+      sha256 = "sha256-MbmfCS8gG7XVbG7mVXGen7F/chEIyTvWSoHfwIiF+2s=";
     };
   };
 }

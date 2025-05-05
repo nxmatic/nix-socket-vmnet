@@ -7,10 +7,11 @@ in stdenv.mkDerivation rec {
   src = sources.socket-vmnet-sources.src;
 
   nativeBuildInputs = [
-    pkgs.git
-    pkgs.gcc
-    pkgs.gnumake
     pkgs.coreutils
+    pkgs.gcc
+    pkgs.git
+    pkgs.gnumake
+    pkgs.logger
   ];
 
 
