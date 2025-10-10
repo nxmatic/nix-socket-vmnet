@@ -10,12 +10,14 @@
   };
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-24.05-darwin";
-    utils.url = "github:numtide/flake-utils";
-    nvfetcher.url = "github:berberman/nvfetcher";
+    flake-commons.url = "github:nxmatic/nix-flake-commons/develop";
+    flake-compat.follows = "flake-commons/flake-compat";
+    nixpkgs.follows = "flake-commons/nixpkgs";
+    nvfetcher.follows = "flake-commons/nvfetcher";
+    utils.follows = "flake-commons/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nvfetcher, utils }:
+  outputs = { self, nixpkgs, flake-commons,flake-compat, nvfetcher, utils }:
     let
       darwinModule = import ./darwin-module.nix;      
     in utils.lib.eachDefaultSystem (system:
