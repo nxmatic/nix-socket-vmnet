@@ -1,70 +1,99 @@
-{ config, lib, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
 with lib;
 
 let
   cfg = config.services.socket_vmnet;
+  dataDir = cfg.dataDir;
+  lanInterface = cfg.lanInterface;
+  wanGateway = cfg.wanGateway;
+  wanSubnet = cfg.wanSubnet;
 in
 {
   options.services.socket_vmnet = {
-    enable = mkEnableOption "socket_vmnet";
-    package = mkOption {
-      type = types.package;
-      default = pkgs.socket_vmnet;
-      description = "The socket_vmnet package to use";
+    enable = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Enable both custom socket_vmnet daemons (LAN and WAN).";
     };
-    bridgedInterface = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "Interface name for bridged mode. Empty value (default) disables bridged mode.";
+    dataDir = mkOption {
+      type = types.str;
+      default = "/var/run/socket_vmnet";
+      description = "Directory for socket_vmnet sockets and logs.";
+    };
+    lanInterface = mkOption {
+      type = types.str;
+      default = "en0";
+      description = "Network interface to bridge for LAN mode.";
+    };
+    wanGateway = mkOption {
+      type = types.str;
+      default = "10.80.16.1";
+      description = "Gateway IP for WAN shared mode.";
+    };
+    wanSubnet = mkOption {
+      type = types.str;
+      default = "10.80.16.0/24";
+      description = "Subnet for WAN shared mode.";
     };
   };
 
-  config = mkIf cfg.enable {
-    environment.systemPackages = [ cfg.package ];
-
-    security.sudo.extraConfig = ''
-      %staff ALL=(ALL) NOPASSWD: ${cfg.package}/bin/socket_vmnet --vmnet-gateway=192.168.105.1 /var/run/socket_vmnet
-      ${optionalString (cfg.bridgedInterface != null) ''
-        %staff ALL=(ALL) NOPASSWD: ${cfg.package}/bin/socket_vmnet --vmnet-mode=bridged --vmnet-interface=${cfg.bridgedInterface} /var/run/socket_vmnet.bridged.${cfg.bridgedInterface}
-      ''}
-    '';
-
-    launchd.daemons = mkMerge [
-      {
-        "io.github.lima-vm.socket_vmnet" = {
-          script = ''
-            mkdir -p /var/run/socket_vmnet
-            mkdir -p /var/log/socket_vmnet
-            exec ${cfg.package}/bin/socket_vmnet --vmnet-gateway=192.168.105.1 /var/run/socket_vmnet
-          '';
-          serviceConfig = {
-            KeepAlive = true;
-            RunAtLoad = true;
-            UserName = "root";
-            ProcessType = "Interactive";
-            StandardOutPath = "/var/log/socket_vmnet/stdout.log";
-            StandardErrorPath = "/var/log/socket_vmnet/stderr.log";
-          };
+  config = mkIf (cfg.enable && pkgs.stdenv.isDarwin) {
+    launchd.daemons = {
+      "com.nxmatic.socket-vmnet-lan" = {
+        serviceConfig = {
+          Label = "com.nxmatic.socket-vmnet-lan";
+          ProgramArguments = [
+            "/opt/socket_vmnet/bin/socket_vmnet"
+            "--vmnet-mode=bridged"
+            "--vmnet-interface=${cfg.lanInterface}"
+            "--socket-group=admin"
+            "${cfg.dataDir}/lan.sock"
+          ];
+          RunAtLoad = true;
+          KeepAlive = true;
+          StandardOutPath = "${cfg.dataDir}/socket_vmnet_lan.log";
+          StandardErrorPath = "${cfg.dataDir}/socket_vmnet_lan_error.log";
+          UserName = "root";
         };
-      }
-      (mkIf (cfg.bridgedInterface != null) {
-        "io.github.lima-vm.socket_vmnet.bridged.${cfg.bridgedInterface}" = {
-          script = ''
-            mkdir -p /var/run/socket_vmnet
-            mkdir -p /var/log/socket_vmnet
-            exec ${cfg.package}/bin/socket_vmnet --vmnet-mode=bridged --vmnet-interface=${cfg.bridgedInterface} /var/run/socket_vmnet.bridged.${cfg.bridgedInterface}
-          '';
-          serviceConfig = {
-            KeepAlive = true;
-            RunAtLoad = true;
-            UserName = "root";
-            ProcessType = "Interactive";
-            StandardOutPath = "/var/log/socket_vmnet/bridged.${cfg.bridgedInterface}.stdout.log";
-            StandardErrorPath = "/var/log/socket_vmnet/bridged.${cfg.bridgedInterface}.stderr.log";
-          };
+      };
+      "com.nxmatic.socket-vmnet-wan" = {
+        serviceConfig = {
+          Label = "com.nxmatic.socket-vmnet-wan";
+          ProgramArguments = [
+            "/opt/socket_vmnet/bin/socket_vmnet"
+            "--vmnet-mode=shared"
+            "--vmnet-gateway=${cfg.wanGateway}"
+            "--vmnet-dhcp-end=10.80.16.254"
+            "--vmnet-mask=255.255.255.0"
+            "--socket-group=admin"
+            "${cfg.dataDir}/wan.sock"
+          ];
+          RunAtLoad = true;
+          KeepAlive = true;
+          StandardOutPath = "${cfg.dataDir}/socket_vmnet_wan.log";
+          StandardErrorPath = "${cfg.dataDir}/socket_vmnet_wan_error.log";
+          UserName = "root";
         };
-      })
-    ];
+      };
+    };
+
+    system.activationScripts.socket-vmnet-setup.text =
+      let
+        socket_vmnet_pkg = pkgs.socket_vmnet or (throw "socket_vmnet package not found in pkgs");
+      in ''
+        : "Setting up custom socket_vmnet services..."
+        mkdir -p /opt/socket_vmnet
+        rsync -av --delete "${socket_vmnet_pkg}/" /opt/socket_vmnet/
+        mkdir -p "${cfg.dataDir}"
+        chmod 755 "${cfg.dataDir}"
+        # If you really need ownership change, reference a stable user:
+        # chown root:wheel "${cfg.dataDir}"
+        touch "${cfg.dataDir}/socket_vmnet_lan.log" \
+              "${cfg.dataDir}/socket_vmnet_wan.log" \
+              "${cfg.dataDir}/socket_vmnet_lan_error.log" \
+              "${cfg.dataDir}/socket_vmnet_wan_error.log"
+        chmod 644 "${cfg.dataDir}/socket_vmnet"*.log
+      '';
   };
 }
